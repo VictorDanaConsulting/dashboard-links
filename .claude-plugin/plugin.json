@@ -1,1 +1,1 @@
-{ "name": "caregility-dashboards", "version": "0.2.0", "description": "Opens a Caregility dashboards panel beside the chat at the start of every session" }
+{ "name": "dashboard-links", "version": "0.2.0", "description": "Pins each project's own dashboard links just above the chat field, read from the project's dashboard-links.json" }

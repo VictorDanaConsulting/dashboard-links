@@ -1,44 +1,64 @@
-import type { Register } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
 
-const PANE = 'caregility-dashboards'
-const TITLE = 'Caregility dashboards'
+// Each project lists its own links in this file, in the project's shared
+// folder: { "links": [{ "label": "...", "href": "https://..." }] }
+const LINKS_FILE = '/mnt/project-files/dashboard-links.json'
 
-const LINKS = [
-  {
-    label: 'Project home (Custom view tab)',
-    short: 'Custom view',
-    href: 'https://claude.ai/code/project/chan_01ENsV58mpoAMFJaFMBxG9gD',
-    note: 'Open the view dropdown and pick Custom view',
-  },
-  {
-    label: 'Sales Hub',
-    short: 'Sales Hub',
-    href: 'https://claude.ai/artifact/Lw8PQ5cJTgm423rNE7quNe',
-    note: 'The team-facing hub',
-  },
-  {
-    label: 'Project Tracker (v0.8)',
-    short: 'Tracker',
-    href: 'https://docs.google.com/spreadsheets/d/1zX5Eiw6TOjlKkQ_jlVHADkRc8P4RBY4JmgCkfjJp6fw/edit',
-    note: 'Source of truth, updated nightly',
-  },
-]
+type DashboardLink = { label: string; href: string }
+
+const isLink = (one: unknown): one is DashboardLink =>
+  typeof one === 'object' &&
+  one !== null &&
+  typeof (one as DashboardLink).label === 'string' &&
+  typeof (one as DashboardLink).href === 'string' &&
+  (one as DashboardLink).href.startsWith('https://')
+
+const parseLinks = (text: string): DashboardLink[] => {
+  try {
+    const parsed: unknown = JSON.parse(text)
+    const list = (parsed as { links?: unknown })?.links
+
+    return Array.isArray(list) ? list.filter(isLink).slice(0, 8) : []
+  } catch {
+    return []
+  }
+}
+
+async function readLinks($: EngineInterface): Promise<DashboardLink[]> {
+  try {
+    return parseLinks(await $.fs.read(LINKS_FILE))
+  } catch {
+    return []
+  }
+}
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'dashboards',
-      description: 'Show the Caregility dashboards panel',
+      description: "Show this project's dashboard links",
     })
-    void $.ui.open({ id: PANE, title: TITLE })
 
     return next(e)
   })
 
   on('command.run', { command: 'dashboards' }, async $ => {
-    await $.ui.open({ id: PANE, title: TITLE })
+    const links = await readLinks($)
 
-    return { text: 'Caregility dashboards panel opened.' }
+    if (links.length === 0) {
+      return {
+        text: `No dashboard links for this project yet. Ask Claude to add some to ${LINKS_FILE}.`,
+      }
+    }
+
+    return { text: links.map(link => `${link.label}: ${link.href}`).join('\n') }
+  })
+
+  // Pick up edits to the links file after each turn.
+  on('turn.complete', ($, e, next) => {
+    $.ui.invalidate('ui.render')
+
+    return next(e)
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -46,28 +66,19 @@ export const register: Register = on => {
       return next(e)
     }
 
-    const { Box, Text, Link } = $.ui.resolve(e)
+    const links = await readLinks($)
+
+    if (links.length === 0) {
+      return next(e)
+    }
+
+    const { Box, Link, Text } = $.ui.resolve(e)
 
     return (
-      <Box gap={2}>
-        <Text dimColor>Dashboards:</Text>
-        {LINKS.map(one => (
-          <Link href={one.href} label={one.short} />
-        ))}
-      </Box>
-    )
-  })
-
-  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Link } = $.ui.resolve(e)
-
-    return (
-      <Box flexDirection="column" gap={1}>
-        {LINKS.map(one => (
-          <Box flexDirection="column">
-            <Link href={one.href} label={one.label} />
-            <Text dimColor>{one.note}</Text>
-          </Box>
+      <Box flexDirection="row" flexWrap="wrap" gap={2}>
+        <Text bold>Dashboards:</Text>
+        {links.map(link => (
+          <Link key={link.href} href={link.href} label={link.label} />
         ))}
       </Box>
     )
