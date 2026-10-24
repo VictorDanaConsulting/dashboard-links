@@ -1,0 +1,5 @@
+{
+  "name": "dana-mods",
+  "owner": { "name": "Dana Consulting" },
+  "plugins": [{ "name": "caregility-dashboards", "source": "./" }]
+}
